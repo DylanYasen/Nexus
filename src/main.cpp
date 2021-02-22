@@ -20,13 +20,13 @@
 const int WIDTH = 1024;
 const int HEIGHT = 768;
 
-enum Mode
+enum PreviewMode
 {
 	Texture,
 	Audio
 };
 
-Mode activeMode = Mode::Texture;
+PreviewMode activeMode = PreviewMode::Texture;
 
 struct TexturePreview
 {
@@ -65,8 +65,7 @@ struct AudioPreview
 	{
 		// todo: use format specific decoing api
 		decodeResult = ma_decoder_init_file(filepath, NULL, &decoder);
-		if (decodeResult != MA_SUCCESS)
-		{
+		if (decodeResult != MA_SUCCESS) {
 			printf("Failed to decode [%s].\n", filepath);
 			return;
 		}
@@ -279,7 +278,7 @@ int main(int argc, char const* argv[])
 						textureFiles.push_back(file);
 					}
 					else if (
-						//strcmp(file.ext, ".ogg") == 0 ||
+						strcmp(file.ext, ".ogg") == 0 ||
 						strcmp(file.ext, ".mp3") == 0 ||
 						strcmp(file.ext, ".wav") == 0)
 					{
@@ -340,7 +339,7 @@ int main(int argc, char const* argv[])
 							}
 							ImGui::EndTabItem();
 
-							activeMode = Mode::Texture;
+							activeMode = PreviewMode::Texture;
 						}
 
 						if (ImGui::BeginTabItem("Audio"))
@@ -353,7 +352,7 @@ int main(int argc, char const* argv[])
 							}
 							ImGui::EndTabItem();
 
-							activeMode = Mode::Audio;
+							activeMode = PreviewMode::Audio;
 						}
 					}
 					ImGui::EndTabBar();
@@ -367,7 +366,7 @@ int main(int argc, char const* argv[])
 					ImGui::BeginGroup();
 					ImGui::BeginChild("item view", ImVec2(0, -ImGui::GetFrameHeightWithSpacing())); // Leave room for 1 line below us
 
-					if (activeMode == Mode::Texture)
+					if (activeMode == PreviewMode::Texture)
 					{
 						const auto& file = textureFiles[selected];
 						ImGui::Text("Name: %s", file.name);
@@ -425,7 +424,7 @@ int main(int argc, char const* argv[])
 						}
 						ImGui::EndChild();
 					}
-					else if (activeMode == Mode::Audio)
+					else if (activeMode == PreviewMode::Audio)
 					{
 						const auto& file = audioFiles[selected];
 						ImGui::Text("Name: %s", file.name);
