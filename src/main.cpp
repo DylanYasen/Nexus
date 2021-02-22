@@ -9,21 +9,139 @@
 
 #include <vector>
 #include <unordered_map>
-
+#include <string>
 #include <stdio.h>
 
 #include "stb_image.h"
 #include "cute_files.h"
-#include <string>
+
+#include "miniaudio.h"
 
 const int WIDTH = 1024;
 const int HEIGHT = 768;
+
+enum Mode
+{
+	Texture,
+	Audio
+};
+
+Mode activeMode = Mode::Texture;
 
 struct TexturePreview
 {
 	int width;
 	int height;
 	GLuint textureId;
+};
+
+// todo: clean up
+namespace AudioCallback
+{
+	void data_callback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)
+	{
+		ma_decoder* pDecoder = (ma_decoder*)pDevice->pUserData;
+		if (pDecoder == NULL) {
+			return;
+		}
+
+		ma_decoder_read_pcm_frames(pDecoder, pOutput, frameCount);
+
+		(void)pInput;
+	}
+}
+
+struct AudioPreview
+{
+	ma_device_config deviceConfig;
+	ma_device device;
+	ma_decoder decoder;
+	ma_result decodeResult;
+	ma_result initResult;
+
+	AudioPreview() {}
+
+	AudioPreview(const char* filepath)
+	{
+		// todo: use format specific decoing api
+		decodeResult = ma_decoder_init_file(filepath, NULL, &decoder);
+		if (decodeResult != MA_SUCCESS)
+		{
+			printf("Failed to decode [%s].\n", filepath);
+			return;
+		}
+
+		deviceConfig = ma_device_config_init(ma_device_type_playback);
+		deviceConfig.playback.format = decoder.outputFormat;
+		deviceConfig.playback.channels = decoder.outputChannels;
+		deviceConfig.sampleRate = decoder.outputSampleRate;
+		deviceConfig.dataCallback = AudioCallback::data_callback;
+		deviceConfig.pUserData = &decoder;
+
+		initResult = ma_device_init(NULL, &deviceConfig, &device);
+		if (initResult != MA_SUCCESS) {
+			printf("Failed to open playback device.\n");
+		}
+	}
+
+	bool isValid() const {
+		return
+			decodeResult == MA_SUCCESS
+			&&
+			initResult == MA_SUCCESS;
+	}
+
+	bool Play()
+	{
+		if (!isValid())
+		{
+			printf("Audio not initialized\n");
+			return false;
+		}
+		ma_result playResult = ma_device_start(&device);
+		if (playResult != MA_SUCCESS) {
+			printf("Failed to start playback device.\n");
+			return false;
+		}
+
+		return true;
+	}
+
+	bool Stop()
+	{
+		if (ma_device_is_started(&device))
+		{
+			ma_decoder_seek_to_pcm_frame(&decoder, 0);
+			ma_result stopResult = ma_device_stop(&device);
+			return stopResult == MA_SUCCESS;
+		}
+
+		return false;
+	}
+
+	void Pause()
+	{
+		if (ma_device_is_started(&device))
+		{
+			ma_result stopResult = ma_device_stop(&device);
+
+			if (stopResult != MA_SUCCESS) {
+				printf("Failed to pause playback device.\n");
+				Dispose();
+			}
+		}
+	}
+
+	void Dispose()
+	{
+		ma_device_uninit(&device);
+		ma_decoder_uninit(&decoder);
+	}
+
+	~AudioPreview()
+	{
+		Dispose();
+	}
 };
 
 bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width, int* out_height)
@@ -64,6 +182,11 @@ int main(int argc, char const* argv[])
 {
 	SDL_Window* window = NULL;
 	SDL_Surface* screenSurface = NULL;
+
+	std::vector<cf_file_t> textureFiles;
+	std::vector<cf_file_t> audioFiles;
+	std::unordered_map<int, TexturePreview> texturePreviewMap;
+	std::unordered_map<int, AudioPreview*> audioPreviewMap;
 
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 	{
@@ -132,31 +255,42 @@ int main(int argc, char const* argv[])
 		bool bRunning = true;
 		bool bActive = true;
 
-		//stbi_set_flip_vertically_on_load(1);
+		const char* assetPaths[] = {
+			"E:/Assets/actionrpgloot",
+			"E:/Audio/RPG Sound Pack"
+		};
 
-		cf_dir_t dir;
-		cf_dir_open(&dir, "E:/Assets/actionrpgloot");
-
-		std::vector<cf_file_t> files;
-		std::unordered_map<int, TexturePreview> texturePreviewMap;
-
-		const char* png = "png";
-		const char* jpg = "jpg";
-
-		while (dir.has_next)
+		// load files
 		{
-			cf_file_t file;
-			cf_read_file(&dir, &file);
-			printf("%s\n", file.path);
-
-			if (strcmp(file.ext, ".png") == 0 ||
-				strcmp(file.ext, ".jpg") == 0)
+			for (const auto& assetPath : assetPaths)
 			{
-				files.push_back(file);
+				cf_dir_t dir;
+				cf_dir_open(&dir, assetPath);
+
+				while (dir.has_next)
+				{
+					cf_file_t file;
+					cf_read_file(&dir, &file);
+					//printf("%s\n", file.path);
+
+					if (strcmp(file.ext, ".png") == 0 ||
+						strcmp(file.ext, ".jpg") == 0)
+					{
+						textureFiles.push_back(file);
+					}
+					else if (
+						//strcmp(file.ext, ".ogg") == 0 ||
+						strcmp(file.ext, ".mp3") == 0 ||
+						strcmp(file.ext, ".wav") == 0)
+					{
+						audioFiles.push_back(file);
+					}
+
+					cf_dir_next(&dir);
+				}
+				cf_dir_close(&dir);
 			}
-			cf_dir_next(&dir);
 		}
-		cf_dir_close(&dir);
 
 		SDL_Event sdlEvent;
 		while (bRunning)
@@ -192,14 +326,37 @@ int main(int argc, char const* argv[])
 				// Left
 				static int selected = 0;
 				{
-					ImGui::BeginChild("left pane", ImVec2(150, 0), true);
+					ImGui::BeginChild("left pane", ImVec2(200, 0), true);
 
-					for (int i = 0; i < files.size(); i++)
+					if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
 					{
-						const auto& file = files[i];
-						if (ImGui::Selectable(file.name, selected == i))
-							selected = i;
+						if (ImGui::BeginTabItem("Texture"))
+						{
+							for (int i = 0; i < textureFiles.size(); i++)
+							{
+								const auto& file = textureFiles[i];
+								if (ImGui::Selectable(file.name, selected == i))
+									selected = i;
+							}
+							ImGui::EndTabItem();
+
+							activeMode = Mode::Texture;
+						}
+
+						if (ImGui::BeginTabItem("Audio"))
+						{
+							for (int i = 0; i < audioFiles.size(); i++)
+							{
+								const auto& file = audioFiles[i];
+								if (ImGui::Selectable(file.name, selected == i))
+									selected = i;
+							}
+							ImGui::EndTabItem();
+
+							activeMode = Mode::Audio;
+						}
 					}
+					ImGui::EndTabBar();
 
 					ImGui::EndChild();
 				}
@@ -210,64 +367,97 @@ int main(int argc, char const* argv[])
 					ImGui::BeginGroup();
 					ImGui::BeginChild("item view", ImVec2(0, -ImGui::GetFrameHeightWithSpacing())); // Leave room for 1 line below us
 
-					const auto& file = files[selected];
-					ImGui::Text("Name: %s", file.name);
-					ImGui::Text("Format: %s", file.ext);
-					ImGui::Text("Size: %d kb", file.size);
-
-					if (texturePreviewMap.find(selected) == texturePreviewMap.end())
+					if (activeMode == Mode::Texture)
 					{
-						TexturePreview preview;
-						bool ret = LoadTextureFromFile(file.path,
-							&preview.textureId,
-							&preview.width, &preview.height);
-						IM_ASSERT(ret);
-						texturePreviewMap[selected] = preview;
+						const auto& file = textureFiles[selected];
+						ImGui::Text("Name: %s", file.name);
+						ImGui::Text("Format: %s", file.ext);
+						ImGui::Text("Size: %d kb", file.size);
+
+						if (texturePreviewMap.find(selected) == texturePreviewMap.end())
+						{
+							TexturePreview preview{};
+							bool ret = LoadTextureFromFile(file.path,
+								&preview.textureId,
+								&preview.width, &preview.height);
+							IM_ASSERT(ret);
+							texturePreviewMap[selected] = preview;
+						}
+
+						ImGui::Separator();
+						if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
+						{
+							if (ImGui::BeginTabItem("Description"))
+							{
+								const auto& preview = texturePreviewMap[selected];
+								const float aspectRatio = (float)preview.width / (float)preview.height;
+								if (preview.width > preview.height)
+								{
+									//w / h = 300 / x;
+									float width = 300;
+									float height = 300 / aspectRatio;
+
+									ImGui::Image((void*)(intptr_t)preview.textureId,
+										//ImVec2(preview.width, preview.height)
+										ImVec2(width, height)
+									);
+								}
+								else
+								{
+									//w / h = x / 300;
+									float width = 300 * aspectRatio;
+									float height = 300;
+
+									ImGui::Image((void*)(intptr_t)preview.textureId,
+										//ImVec2(preview.width, preview.height)
+										ImVec2(width, height)
+									);
+								}
+
+								ImGui::EndTabItem();
+							}
+							if (ImGui::BeginTabItem("Details"))
+							{
+								ImGui::Text("ID: 0123456789");
+								ImGui::EndTabItem();
+							}
+							ImGui::EndTabBar();
+						}
+						ImGui::EndChild();
+					}
+					else if (activeMode == Mode::Audio)
+					{
+						const auto& file = audioFiles[selected];
+						ImGui::Text("Name: %s", file.name);
+						ImGui::Text("Format: %s", file.ext);
+						ImGui::Text("Size: %d kb", file.size);
+
+						if (audioPreviewMap.find(selected) == audioPreviewMap.end())
+						{
+							audioPreviewMap[selected] = new AudioPreview(file.path);
+						}
+
+						auto& const audioPreview = audioPreviewMap[selected];
+
+						ImGui::Text("Sample Rate: %d Hz", audioPreview->decoder.outputSampleRate);
+						ImGui::Text("Channel Count: %d", audioPreview->decoder.outputChannels);
+						ImGui::EndChild();
+
+						if (ImGui::Button("Play")) {
+							audioPreview->Play();
+						}
+						ImGui::SameLine();
+
+						if (ImGui::Button("Pause")) {
+							audioPreview->Pause();
+						}
+
+						ImGui::SameLine();
+						if (ImGui::Button("Stop")) {
+							audioPreview->Stop();
+						}
 					}
 
-					ImGui::Separator();
-					if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
-					{
-						if (ImGui::BeginTabItem("Description"))
-						{
-							const auto& preview = texturePreviewMap[selected];
-							const float aspectRatio = (float)preview.width / (float)preview.height;
-							if (preview.width > preview.height)
-							{
-								//w / h = 300 / x;
-								float width = 300;
-								float height = 300 / aspectRatio;
-
-								ImGui::Image((void*)(intptr_t)preview.textureId,
-									//ImVec2(preview.width, preview.height)
-									ImVec2(width, height)
-								);
-							}
-							else
-							{
-								//w / h = x / 300;
-								float width = 300 * aspectRatio;
-								float height = 300;
-
-								ImGui::Image((void*)(intptr_t)preview.textureId,
-									//ImVec2(preview.width, preview.height)
-									ImVec2(width, height)
-								);
-							}
-
-							ImGui::EndTabItem();
-						}
-						if (ImGui::BeginTabItem("Details"))
-						{
-							ImGui::Text("ID: 0123456789");
-							ImGui::EndTabItem();
-						}
-						ImGui::EndTabBar();
-					}
-					ImGui::EndChild();
-					if (ImGui::Button("Revert")) {}
-					ImGui::SameLine();
-					if (ImGui::Button("Save")) {}
 					ImGui::EndGroup();
 				}
 			}

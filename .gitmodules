@@ -13,3 +13,6 @@ url = https://github.com/Dav1dde/glad
 [submodule "external/src/cuteheaders"]
 path = external/src/cuteheaders
 url = https://github.com/RandyGaul/cute_headers
+[submodule "external/src/miniaudio"]
+path = external/src/miniaudio
+url = https://github.com/mackron/miniaudio

@@ -51,3 +51,7 @@ include_directories(external/src/cuteheaders)
 # imgui
 include_directories(external/src/imgui)
 include_directories(external/src/imgui/backends)
+
+# miniaudio
+include_directories(external/src/miniaudio)
+
