@@ -309,8 +309,16 @@ int main(int argc, char const* argv[])
 				ImGui::NewFrame();
 			}
 
-			ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
-			if (ImGui::Begin("Browser", &bActive, ImGuiWindowFlags_MenuBar))
+
+			// fullscreen main view
+			ImGuiViewport* viewport = ImGui::GetMainViewport();
+			ImGui::SetNextWindowPos(viewport->Pos);
+			ImGui::SetNextWindowSize(viewport->Size);
+
+			ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoTitleBar
+				| ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+		
+			if (ImGui::Begin("Browser", &bActive, window_flags))
 			{
 				if (ImGui::BeginMenuBar())
 				{
@@ -440,6 +448,7 @@ int main(int argc, char const* argv[])
 
 						ImGui::Text("Sample Rate: %d Hz", audioPreview->decoder.outputSampleRate);
 						ImGui::Text("Channel Count: %d", audioPreview->decoder.outputChannels);
+						ImGui::Separator();
 						ImGui::EndChild();
 
 						if (ImGui::Button("Play")) {
