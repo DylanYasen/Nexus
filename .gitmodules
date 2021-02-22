@@ -16,3 +16,8 @@ url = https://github.com/RandyGaul/cute_headers
 [submodule "external/src/miniaudio"]
 path = external/src/miniaudio
 url = https://github.com/mackron/miniaudio
+[submodule "external/src/iconfont"]
+path = external/src/iconfont
+url = https://github.com/juliettef/IconFontCppHeaders
+
+

@@ -15,6 +15,9 @@ set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME})
 
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/CMakeModules)
 
+# temp
+file(COPY resources DESTINATION ${EXECUTABLE_OUTPUT_PATH}/Debug)
+
 set(SOURCES
    ${PROJECT_SOURCE_DIR}/main.cpp
 
@@ -55,3 +58,5 @@ include_directories(external/src/imgui/backends)
 # miniaudio
 include_directories(external/src/miniaudio)
 
+# icon font
+include_directories(external/src/iconfont)
