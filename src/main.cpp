@@ -263,6 +263,8 @@ int main(int argc, char const* argv[])
 	std::unordered_map<int, TexturePreview> texturePreviewMap;
 	std::unordered_map<int, AudioPreview*> audioPreviewMap;
 
+	static char filterStr[256] = "";
+
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 	{
 		printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -384,6 +386,8 @@ int main(int argc, char const* argv[])
 		{
 			while (SDL_PollEvent(&sdlEvent) != 0)
 			{
+				ImGui_ImplSDL2_ProcessEvent(&sdlEvent);
+
 				if (sdlEvent.type == SDL_QUIT)
 				{
 					bRunning = false;
@@ -422,6 +426,8 @@ int main(int argc, char const* argv[])
 				static int selected = 0;
 				{
 					ImGui::BeginChild("left pane", ImVec2(200, 0), true);
+
+					ImGui::InputText(ICON_FA_SEARCH, filterStr, IM_ARRAYSIZE(filterStr));
 
 					if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
 					{
