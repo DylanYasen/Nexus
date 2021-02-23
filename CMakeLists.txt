@@ -19,9 +19,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/CMakeModules)
 file(COPY resources DESTINATION ${EXECUTABLE_OUTPUT_PATH}/Debug)
 
 set(SOURCES
+   ${PROJECT_SOURCE_DIR}/external/headerlibs.cpp
    ${PROJECT_SOURCE_DIR}/main.cpp
 
-   ${PROJECT_SOURCE_DIR}/external/headerlibs.cpp
 
    # imgui
    external/src/imgui/imgui.cpp
@@ -60,3 +60,6 @@ include_directories(external/src/miniaudio)
 
 # icon font
 include_directories(external/src/iconfont)
+
+# string match
+include_directories(${PROJECT_SOURCE_DIR}/external)

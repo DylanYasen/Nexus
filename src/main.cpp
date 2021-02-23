@@ -19,6 +19,9 @@
 
 #include "IconsFontAwesome5.h"
 
+#define FTS_FUZZY_MATCH_IMPLEMENTATION
+#include "fuzzy_match.h"
+
 const int WIDTH = 1024;
 const int HEIGHT = 768;
 
@@ -436,8 +439,12 @@ int main(int argc, char const* argv[])
 							for (int i = 0; i < textureFiles.size(); i++)
 							{
 								const auto& file = textureFiles[i];
-								if (ImGui::Selectable(file.name, selected == i))
-									selected = i;
+
+								if (fts::fuzzy_match_simple(filterStr, file.name))
+								{
+									if (ImGui::Selectable(file.name, selected == i))
+										selected = i;
+								}
 							}
 							ImGui::EndTabItem();
 
@@ -449,8 +456,12 @@ int main(int argc, char const* argv[])
 							for (int i = 0; i < audioFiles.size(); i++)
 							{
 								const auto& file = audioFiles[i];
-								if (ImGui::Selectable(file.name, selected == i))
-									selected = i;
+
+								if (fts::fuzzy_match_simple(filterStr, file.name))
+								{
+									if (ImGui::Selectable(file.name, selected == i))
+										selected = i;
+								}
 							}
 							ImGui::EndTabItem();
 
