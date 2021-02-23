@@ -63,3 +63,8 @@ include_directories(external/src/iconfont)
 
 # string match
 include_directories(${PROJECT_SOURCE_DIR}/external)
+
+# sqlite
+add_subdirectory(external/src/sqlite)
+include_directories(external/src/sqlite)
+target_link_libraries(${PROJECT_NAME} SQLite3)

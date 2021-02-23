@@ -22,6 +22,8 @@
 #define FTS_FUZZY_MATCH_IMPLEMENTATION
 #include "fuzzy_match.h"
 
+#include <sqlite3.h> 
+
 const int WIDTH = 1024;
 const int HEIGHT = 768;
 
@@ -336,7 +338,7 @@ int main(int argc, char const* argv[])
 			// merge in icons from Font Awesome
 			static const ImWchar icons_ranges[] = { ICON_MIN_FA, ICON_MAX_FA, 0 };
 			ImFontConfig icons_config; icons_config.MergeMode = true; icons_config.PixelSnapH = true;
-			io.Fonts->AddFontFromFileTTF("resources/fonts/" FONT_ICON_FILE_NAME_FAS, 13.0f, &icons_config, icons_ranges);
+			io.Fonts->AddFontFromFileTTF("./resources/fonts/" FONT_ICON_FILE_NAME_FAS, 13.0f, &icons_config, icons_ranges);
 			// default font size in imgui is 13. we're setting out icon font to that as well so that it's easier to align
 		}
 
@@ -351,6 +353,22 @@ int main(int argc, char const* argv[])
 			"E:/Assets/actionrpgloot",
 			"E:/Audio/RPG Sound Pack"
 		};
+
+		// init database
+		{
+			sqlite3* DB;
+			int exit = 0;
+			exit = sqlite3_open("vault.db", &DB);
+
+			if (exit)
+			{
+				printf("failed to open DB: [%s] \n", sqlite3_errmsg(DB));
+			}
+			else
+			{
+				printf("successfully opened DB");
+			}
+		}
 
 		// load files
 		{

@@ -19,3 +19,7 @@ url = https://github.com/mackron/miniaudio
 [submodule "external/src/iconfont"]
 path = external/src/iconfont
 url = https://github.com/juliettef/IconFontCppHeaders
+[submodule "external/src/sqlite"]
+path = external/src/sqlite
+url = https://github.com/azadkuh/sqlite-amalgamation
+
