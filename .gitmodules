@@ -19,5 +19,3 @@ url = https://github.com/mackron/miniaudio
 [submodule "external/src/iconfont"]
 path = external/src/iconfont
 url = https://github.com/juliettef/IconFontCppHeaders
-
-
