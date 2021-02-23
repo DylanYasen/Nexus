@@ -22,7 +22,7 @@
 #define FTS_FUZZY_MATCH_IMPLEMENTATION
 #include "fuzzy_match.h"
 
-#include <sqlite3.h> 
+#include "sqlite_orm/sqlite_orm.h"
 
 const int WIDTH = 1024;
 const int HEIGHT = 768;
@@ -356,7 +356,34 @@ int main(int argc, char const* argv[])
 
 		// init database
 		{
-			sqlite3* DB;
+			struct User {
+				int id;
+				std::string firstName;
+				std::string lastName;
+				int birthDate;
+				std::unique_ptr<std::string> imageUrl;
+				int typeId;
+			};
+
+			struct UserType {
+				int id;
+				std::string name;
+			};
+
+			using namespace sqlite_orm;
+			auto storage = make_storage("./db.sqlite",
+				make_table("users",
+					make_column("id", &User::id, autoincrement(), primary_key()),
+					make_column("first_name", &User::firstName),
+					make_column("last_name", &User::lastName),
+					make_column("birth_date", &User::birthDate),
+					make_column("image_url", &User::imageUrl),
+					make_column("type_id", &User::typeId)),
+				make_table("user_types",
+					make_column("id", &UserType::id, autoincrement(), primary_key()),
+					make_column("name", &UserType::name, default_value("name_placeholder"))));
+			storage.sync_schema();
+			/*sqlite3* DB;
 			int exit = 0;
 			exit = sqlite3_open("vault.db", &DB);
 
@@ -367,7 +394,7 @@ int main(int argc, char const* argv[])
 			else
 			{
 				printf("successfully opened DB");
-			}
+			}*/
 		}
 
 		// load files

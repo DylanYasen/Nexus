@@ -22,4 +22,6 @@ url = https://github.com/juliettef/IconFontCppHeaders
 [submodule "external/src/sqlite"]
 path = external/src/sqlite
 url = https://github.com/azadkuh/sqlite-amalgamation
-
+[submodule "external/src/sqlite_orm"]
+path = external/src/sqlite_orm
+url = https://github.com/fnc12/sqlite_orm
