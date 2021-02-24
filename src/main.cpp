@@ -400,10 +400,8 @@ void ConfigImguiStyle()
 	style->WindowRounding = 4.0f;
 }
 
-static std::vector<cf_file_t> textureFiles;
-static std::vector<cf_file_t> audioFiles;
-static std::vector<db::File> filteredFiles;
 static std::vector<db::File> scannedFiles;
+static std::vector<db::File> filteredFiles;
 
 int main(int argc, char const* argv[])
 {
@@ -495,6 +493,7 @@ int main(int argc, char const* argv[])
 		bool bActive = true;
 
 		const char* assetPaths[] = {
+			//"E:/Audio"
 			"E:/Assets/actionrpgloot"
 			/*"E:/Assets/actionrpgloot",
 			"E:/Audio/RPG Sound Pack",
@@ -520,7 +519,6 @@ int main(int argc, char const* argv[])
 				{
 					file.type = db::TEXTURE_FILE_TYPE;
 					scannedFiles.push_back(file);
-					//textureFiles.push_back(file);
 				}
 				else if (
 					file.ext.compare(".ogg") == 0 ||
@@ -529,7 +527,6 @@ int main(int argc, char const* argv[])
 				{
 					file.type = db::AUDIO_FILE_TYPE;
 					scannedFiles.push_back(file);
-					//audioFiles.push_back(file);
 				}
 			};
 
@@ -538,9 +535,6 @@ int main(int argc, char const* argv[])
 				cf_traverse(assetPath, fileTraverse, 0);
 			}
 		}
-
-		/*db::AddFiles(textureFiles);
-		db::AddFiles(audioFiles);*/
 		db::AddFiles(scannedFiles);
 		scannedFiles.clear();
 
