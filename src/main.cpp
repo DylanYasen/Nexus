@@ -42,6 +42,139 @@ struct TexturePreview
 	GLuint textureId;
 };
 
+namespace db {
+
+	static const char* AUDIO_FILE_TYPE = "audio";
+	static const char* TEXTURE_FILE_TYPE = "texture";
+
+	struct File
+	{
+		int id = -1;
+		std::string name;
+		std::string path;
+		std::string ext;
+		std::string type;  // using strings for now,  enum binding is too much work
+		size_t size;
+
+		File()
+		{
+		}
+
+		File(const cf_file_t& rawFile)
+			:name(rawFile.name), path(rawFile.path),
+			ext(rawFile.ext), size(rawFile.size)
+		{
+
+		}
+	};
+
+	struct Tag
+	{
+		int id = -1;
+		std::string name;
+	};
+
+	struct FileTag
+	{
+		int id = -1;
+		int file_id;
+		int tag_id;
+	};
+
+	using namespace sqlite_orm;
+	auto storage = make_storage("./db.sqlite",
+
+		// note:  indexing speeds up exact query but slows down like query
+		//put `make_index` before `make_table` cause `sync_schema` is called in reverse order
+		//make_index("idx_file_name", &File::name),
+
+		make_table("files",
+			make_column("id", &File::id, autoincrement(), primary_key()),
+			make_column("name", &File::name),
+			make_column("path", &File::path, unique()),
+			make_column("ext", &File::ext),
+			make_column("size", &File::size),
+			make_column("type", &File::type)),
+
+		make_table("tags",
+			make_column("id", &Tag::id, autoincrement(), primary_key()),
+			make_column("name", &Tag::name, unique())),
+
+		make_table("fileTags",
+			make_column("id", &FileTag::id, autoincrement(), primary_key()),
+			make_column("file_id", &FileTag::file_id),
+			make_column("tag_id", &FileTag::tag_id),
+			foreign_key(&FileTag::file_id).references(&File::id),
+			foreign_key(&FileTag::tag_id).references(&Tag::id))
+	);
+
+	void Init()
+	{
+		storage.sync_schema();
+	}
+
+	void AddFile(const File& file)
+	{
+		//For a single column use `auto rows = storage.select(&User::id, where(...));
+		auto results = storage.select(&File::id, where(is_equal(&File::path, file.path)));
+		if (results.empty())
+		{
+			storage.insert(file);
+		}
+		else {
+			printf("already exist [%s]\n", file.path);
+		}
+	}
+
+	void AddFiles(const std::vector<cf_file_t>& files)
+	{
+		storage.transaction([&] {
+			for (auto& file : files) {
+
+				auto results = storage.select(&File::id, where(is_equal(&File::path, file.path)));
+				if (results.empty()) {
+					File f;
+					f.ext = file.ext;
+					f.name = file.name;
+					f.path = file.path;
+					f.size = file.size;
+					storage.insert(f);
+				}
+			}
+			return true;  //  commit
+			});
+	}
+
+	void AddFiles(const std::vector<File>& files)
+	{
+		storage.transaction([&] {
+			for (auto& file : files) {
+
+				auto results = storage.select(&File::id, where(is_equal(&File::path, file.path)));
+				if (results.empty()) {
+					storage.insert(file);
+				}
+			}
+			return true;  //  commit
+			});
+	}
+
+	std::vector<File> GetFilesByRoughName(std::string name)
+	{
+		return storage.get_all<File>(where(like(&File::name, "%" + name + "%")));
+	}
+
+	std::vector<File> GetAudioFilesByRoughName(std::string name)
+	{
+		return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, AUDIO_FILE_TYPE)));
+	}
+
+	std::vector<File> GetTextureFilesByRoughName(std::string name)
+	{
+		return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, TEXTURE_FILE_TYPE)));
+	}
+}
+
 // todo: clean up
 namespace AudioCallback
 {
@@ -68,12 +201,13 @@ struct AudioPreview
 
 	AudioPreview() {}
 
-	AudioPreview(const char* filepath)
+	AudioPreview(const std::string& filepath)
 	{
 		// todo: use format specific decoing api
-		decodeResult = ma_decoder_init_file(filepath, NULL, &decoder);
+		const char* filepathCStr = filepath.c_str();
+		decodeResult = ma_decoder_init_file(filepathCStr, NULL, &decoder);
 		if (decodeResult != MA_SUCCESS) {
-			printf("Failed to decode [%s].\n", filepath);
+			printf("Failed to decode [%s].\n", filepathCStr);
 			return;
 		}
 
@@ -156,14 +290,22 @@ struct AudioPreview
 	}
 };
 
-bool LoadTextureFromFile(const char* filename, GLuint* out_texture, int* out_width, int* out_height)
+bool LoadTextureFromFile(const std::string& filename, GLuint* out_texture, int* out_width, int* out_height)
 {
 	// Load from file
 	int image_width = 0;
 	int image_height = 0;
-	unsigned char* image_data = stbi_load(filename, &image_width, &image_height, NULL, 4);
+	const char* filenameCstr = filename.c_str();
+	unsigned char* image_data = stbi_load(filenameCstr, &image_width, &image_height, NULL, 4);
 	if (image_data == NULL)
+	{
+		printf("failed to load image: [%s]\n", filenameCstr);
 		return false;
+	}
+	else
+	{
+		printf("loaded image: [%s]\n", filenameCstr);
+	}
 
 	// Create a OpenGL texture identifier
 	GLuint image_texture;
@@ -258,15 +400,18 @@ void ConfigImguiStyle()
 	style->WindowRounding = 4.0f;
 }
 
+static std::vector<cf_file_t> textureFiles;
+static std::vector<cf_file_t> audioFiles;
+static std::vector<db::File> filteredFiles;
+static std::vector<db::File> scannedFiles;
+
 int main(int argc, char const* argv[])
 {
 	SDL_Window* window = NULL;
 	SDL_Surface* screenSurface = NULL;
 
-	std::vector<cf_file_t> textureFiles;
-	std::vector<cf_file_t> audioFiles;
-	std::unordered_map<int, TexturePreview> texturePreviewMap;
-	std::unordered_map<int, AudioPreview*> audioPreviewMap;
+	std::unordered_map<std::string, TexturePreview> texturePreviewMap;
+	std::unordered_map<std::string, AudioPreview*> audioPreviewMap;
 
 	static char filterStr[256] = "";
 
@@ -350,84 +495,57 @@ int main(int argc, char const* argv[])
 		bool bActive = true;
 
 		const char* assetPaths[] = {
-			"E:/Assets/actionrpgloot",
-			"E:/Audio/RPG Sound Pack"
+			"E:/Assets/actionrpgloot"
+			/*"E:/Assets/actionrpgloot",
+			"E:/Audio/RPG Sound Pack",
+			"E:/Assets/armoriconpack"*/
+			//"E:/Assets"
 		};
 
 		// init database
 		{
-			struct User {
-				int id;
-				std::string firstName;
-				std::string lastName;
-				int birthDate;
-				std::unique_ptr<std::string> imageUrl;
-				int typeId;
-			};
-
-			struct UserType {
-				int id;
-				std::string name;
-			};
-
-			using namespace sqlite_orm;
-			auto storage = make_storage("./db.sqlite",
-				make_table("users",
-					make_column("id", &User::id, autoincrement(), primary_key()),
-					make_column("first_name", &User::firstName),
-					make_column("last_name", &User::lastName),
-					make_column("birth_date", &User::birthDate),
-					make_column("image_url", &User::imageUrl),
-					make_column("type_id", &User::typeId)),
-				make_table("user_types",
-					make_column("id", &UserType::id, autoincrement(), primary_key()),
-					make_column("name", &UserType::name, default_value("name_placeholder"))));
-			storage.sync_schema();
-			/*sqlite3* DB;
-			int exit = 0;
-			exit = sqlite3_open("vault.db", &DB);
-
-			if (exit)
-			{
-				printf("failed to open DB: [%s] \n", sqlite3_errmsg(DB));
-			}
-			else
-			{
-				printf("successfully opened DB");
-			}*/
+			db::Init();
 		}
 
 		// load files
 		{
+			scannedFiles.reserve(500);
+			const auto fileTraverse = [](cf_file_t* fileOnStack, void* udata)
+			{
+				cf_file_t rawfile = *fileOnStack;
+
+				db::File file(rawfile);
+				if (file.ext.compare(".png") == 0 ||
+					file.ext.compare(".jpg") == 0)
+				{
+					file.type = db::TEXTURE_FILE_TYPE;
+					scannedFiles.push_back(file);
+					//textureFiles.push_back(file);
+				}
+				else if (
+					file.ext.compare(".ogg") == 0 ||
+					file.ext.compare(".mp3") == 0 ||
+					file.ext.compare(".wav") == 0)
+				{
+					file.type = db::AUDIO_FILE_TYPE;
+					scannedFiles.push_back(file);
+					//audioFiles.push_back(file);
+				}
+			};
+
 			for (const auto& assetPath : assetPaths)
 			{
-				cf_dir_t dir;
-				cf_dir_open(&dir, assetPath);
-
-				while (dir.has_next)
-				{
-					cf_file_t file;
-					cf_read_file(&dir, &file);
-					//printf("%s\n", file.path);
-
-					if (strcmp(file.ext, ".png") == 0 ||
-						strcmp(file.ext, ".jpg") == 0)
-					{
-						textureFiles.push_back(file);
-					}
-					else if (
-						strcmp(file.ext, ".ogg") == 0 ||
-						strcmp(file.ext, ".mp3") == 0 ||
-						strcmp(file.ext, ".wav") == 0)
-					{
-						audioFiles.push_back(file);
-					}
-
-					cf_dir_next(&dir);
-				}
-				cf_dir_close(&dir);
+				cf_traverse(assetPath, fileTraverse, 0);
 			}
 		}
+
+		/*db::AddFiles(textureFiles);
+		db::AddFiles(audioFiles);*/
+		db::AddFiles(scannedFiles);
+		scannedFiles.clear();
+
+		bool bFilteredForAudio = false;
+		bool bFilteredForTexture = false;
 
 		SDL_Event sdlEvent;
 		while (bRunning)
@@ -448,7 +566,6 @@ int main(int argc, char const* argv[])
 				ImGui_ImplSDL2_NewFrame(window);
 				ImGui::NewFrame();
 			}
-
 
 			// fullscreen main view
 			ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -475,19 +592,30 @@ int main(int argc, char const* argv[])
 				{
 					ImGui::BeginChild("left pane", ImVec2(200, 0), true);
 
-					ImGui::InputText(ICON_FA_SEARCH, filterStr, IM_ARRAYSIZE(filterStr));
+					bool bFilterStrDirty = ImGui::InputText(ICON_FA_SEARCH, filterStr, IM_ARRAYSIZE(filterStr));
 
 					if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
 					{
 						if (ImGui::BeginTabItem("Texture"))
 						{
-							for (int i = 0; i < textureFiles.size(); i++)
+							if (bFilterStrDirty || !bFilteredForTexture)
 							{
-								const auto& file = textureFiles[i];
+								filteredFiles = db::GetTextureFilesByRoughName(filterStr);
 
-								if (fts::fuzzy_match_simple(filterStr, file.name))
+								// todo: cleanier way to manage these states?
 								{
-									if (ImGui::Selectable(file.name, selected == i))
+									bFilteredForAudio = false;
+									bFilteredForTexture = true;
+								}
+							}
+
+							for (int i = 0; i < filteredFiles.size(); i++)
+							{
+								const auto& file = filteredFiles[i];
+								const auto& filenameCstr = file.name.c_str();
+								if (fts::fuzzy_match_simple(filterStr, filenameCstr))
+								{
+									if (ImGui::Selectable(filenameCstr, selected == i))
 										selected = i;
 								}
 							}
@@ -498,13 +626,24 @@ int main(int argc, char const* argv[])
 
 						if (ImGui::BeginTabItem("Audio"))
 						{
-							for (int i = 0; i < audioFiles.size(); i++)
+							if (bFilterStrDirty || !bFilteredForAudio)
 							{
-								const auto& file = audioFiles[i];
+								filteredFiles = db::GetAudioFilesByRoughName(filterStr);
 
-								if (fts::fuzzy_match_simple(filterStr, file.name))
+								// todo: cleanier way to manage these states?
 								{
-									if (ImGui::Selectable(file.name, selected == i))
+									bFilteredForAudio = true;
+									bFilteredForTexture = false;
+								}
+							}
+
+							for (int i = 0; i < filteredFiles.size(); i++)
+							{
+								const auto& file = filteredFiles[i];
+								const auto& filenameCstr = file.name.c_str();
+								if (fts::fuzzy_match_simple(filterStr, filenameCstr))
+								{
+									if (ImGui::Selectable(filenameCstr, selected == i))
 										selected = i;
 								}
 							}
@@ -526,95 +665,108 @@ int main(int argc, char const* argv[])
 
 					if (activeMode == PreviewMode::Texture)
 					{
-						const auto& file = textureFiles[selected];
-						ImGui::Text("Name: %s", file.name);
-						ImGui::Text("Format: %s", file.ext);
-						ImGui::Text("Size: %d kb", file.size);
-
-						if (texturePreviewMap.find(selected) == texturePreviewMap.end())
+						if (!filteredFiles.empty() &&
+							selected >= 0 && selected < filteredFiles.size())
 						{
-							TexturePreview preview{};
-							bool ret = LoadTextureFromFile(file.path,
-								&preview.textureId,
-								&preview.width, &preview.height);
-							IM_ASSERT(ret);
-							texturePreviewMap[selected] = preview;
-						}
+							const auto& file = filteredFiles[selected];
+							ImGui::Text("Name: %s", file.name.c_str());
+							ImGui::Text("Format: %s", file.ext.c_str());
+							ImGui::Text("Size: %d kb", file.size);
 
-						ImGui::Separator();
-						if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
-						{
-							if (ImGui::BeginTabItem("Description"))
+							// todo: maybe hash the path
+							if (texturePreviewMap.find(file.path) == texturePreviewMap.end())
 							{
-								const auto& preview = texturePreviewMap[selected];
-								const float aspectRatio = (float)preview.width / (float)preview.height;
-								if (preview.width > preview.height)
-								{
-									//w / h = 300 / x;
-									float width = 300;
-									float height = 300 / aspectRatio;
+								TexturePreview preview{};
+								bool ret = LoadTextureFromFile(
+									file.path,
+									&preview.textureId,
+									&preview.width, &preview.height);
+								IM_ASSERT(ret);
 
-									ImGui::Image((void*)(intptr_t)preview.textureId,
-										//ImVec2(preview.width, preview.height)
-										ImVec2(width, height)
-									);
-								}
-								else
-								{
-									//w / h = x / 300;
-									float width = 300 * aspectRatio;
-									float height = 300;
-
-									ImGui::Image((void*)(intptr_t)preview.textureId,
-										//ImVec2(preview.width, preview.height)
-										ImVec2(width, height)
-									);
-								}
-
-								ImGui::EndTabItem();
+								// todo: resource manager
+								texturePreviewMap[file.path] = preview;
 							}
-							if (ImGui::BeginTabItem("Details"))
+
+							ImGui::Separator();
+							if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
 							{
-								ImGui::Text("ID: 0123456789");
-								ImGui::EndTabItem();
+								if (ImGui::BeginTabItem("Description"))
+								{
+									const auto& preview = texturePreviewMap[file.path];
+									const float aspectRatio = (float)preview.width / (float)preview.height;
+									if (preview.width > preview.height)
+									{
+										//w / h = 300 / x;
+										float width = 300;
+										float height = 300 / aspectRatio;
+
+										ImGui::Image((void*)(intptr_t)preview.textureId,
+											//ImVec2(preview.width, preview.height)
+											ImVec2(width, height)
+										);
+									}
+									else
+									{
+										//w / h = x / 300;
+										float width = 300 * aspectRatio;
+										float height = 300;
+
+										ImGui::Image((void*)(intptr_t)preview.textureId,
+											//ImVec2(preview.width, preview.height)
+											ImVec2(width, height)
+										);
+									}
+
+									ImGui::EndTabItem();
+								}
+								if (ImGui::BeginTabItem("Details"))
+								{
+									ImGui::Text("ID: 0123456789");
+									ImGui::EndTabItem();
+								}
+								ImGui::EndTabBar();
 							}
-							ImGui::EndTabBar();
 						}
 						ImGui::EndChild();
 					}
 					else if (activeMode == PreviewMode::Audio)
 					{
-						const auto& file = audioFiles[selected];
-						ImGui::Text("Name: %s", file.name);
-						ImGui::Text("Format: %s", file.ext);
-						ImGui::Text("Size: %d kb", file.size);
-
-						if (audioPreviewMap.find(selected) == audioPreviewMap.end())
+						if (!filteredFiles.empty() &&
+							selected >= 0 && selected < filteredFiles.size())
 						{
-							audioPreviewMap[selected] = new AudioPreview(file.path);
+							const auto& file = filteredFiles[selected];
+							ImGui::Text("Name: %s", file.name.c_str());
+							ImGui::Text("Format: %s", file.ext.c_str());
+							ImGui::Text("Size: %d kb", file.size);
+
+							if (audioPreviewMap.find(file.path) == audioPreviewMap.end())
+							{
+								audioPreviewMap[file.path] = new AudioPreview(file.path);
+							}
+
+							auto& const audioPreview = audioPreviewMap[file.path];
+
+							ImGui::Text("Sample Rate: %d Hz", audioPreview->decoder.outputSampleRate);
+							ImGui::Text("Channel Count: %d", audioPreview->decoder.outputChannels);
+							ImGui::Separator();
+
+
+							const auto& buttonSize = ImVec2(30, 30);
+							if (ImGui::Button(ICON_FA_PLAY, buttonSize)) {
+								audioPreview->Play();
+							}
+							ImGui::SameLine();
+
+							if (ImGui::Button(ICON_FA_PAUSE, buttonSize)) {
+								audioPreview->Pause();
+							}
+
+							ImGui::SameLine();
+							if (ImGui::Button(ICON_FA_STOP, buttonSize)) {
+								audioPreview->Stop();
+							}
 						}
-
-						auto& const audioPreview = audioPreviewMap[selected];
-
-						ImGui::Text("Sample Rate: %d Hz", audioPreview->decoder.outputSampleRate);
-						ImGui::Text("Channel Count: %d", audioPreview->decoder.outputChannels);
-						ImGui::Separator();
 						ImGui::EndChild();
-
-						const auto& buttonSize = ImVec2(30, 30);
-						if (ImGui::Button(ICON_FA_PLAY, buttonSize)) {
-							audioPreview->Play();
-						}
-						ImGui::SameLine();
-
-						if (ImGui::Button(ICON_FA_PAUSE, buttonSize)) {
-							audioPreview->Pause();
-						}
-
-						ImGui::SameLine();
-						if (ImGui::Button(ICON_FA_STOP, buttonSize)) {
-							audioPreview->Stop();
-						}
 					}
 
 					ImGui::EndGroup();
