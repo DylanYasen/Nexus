@@ -32,3 +32,15 @@ SELECT * FROM files WHERE name like "%loot%"
 
 
 !!!! using index speeds up "equal select"  but slows down "like select"
+
+
+todo:
+[] query by tags
+[] file scan paths UI
+[] file scanning in background thread
+[] lazy load resources
+[] resource management. (unload after every switch? LRU?)
+[] audio stops when switching tab. optional?
+[] audio auto switch to newly selected file 
+[] audio play/pause hotkey
+[] audio visualizer
