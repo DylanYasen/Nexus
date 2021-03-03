@@ -33,7 +33,7 @@ enum PreviewMode
 	Audio
 };
 
-PreviewMode activeMode = PreviewMode::Texture;
+
 
 struct TexturePreview
 {
@@ -461,6 +461,10 @@ void ConfigImguiStyle()
 static std::vector<db::File> scannedFiles;
 static std::vector<db::File> filteredFiles;
 
+static PreviewMode activeMode = PreviewMode::Texture;
+static int selectedAssetIndex = -1;
+
+
 int main(int argc, char const* argv[])
 {
 	SDL_Window* window = NULL;
@@ -608,9 +612,38 @@ int main(int argc, char const* argv[])
 			{
 				ImGui_ImplSDL2_ProcessEvent(&sdlEvent);
 
-				if (sdlEvent.type == SDL_QUIT)
-				{
+				switch (sdlEvent.type) {
+				case SDL_KEYDOWN:
+					break;
+
+				case SDL_KEYUP:
+
+					if (sdlEvent.key.keysym.sym == SDLK_SPACE)
+					{
+						if (activeMode == PreviewMode::Audio)
+						{
+							if (!filteredFiles.empty() &&
+								selectedAssetIndex >= 0 &&
+								selectedAssetIndex < filteredFiles.size())
+							{
+								const auto& file = filteredFiles[selectedAssetIndex];
+								if (audioPreviewMap.find(file.path) == audioPreviewMap.end())
+								{
+									audioPreviewMap[file.path] = new AudioPreview(file.path);
+								}
+								auto const audioPreview = audioPreviewMap[file.path];
+								if (!audioPreview->Play()) audioPreview->Pause();
+							}
+						}
+					}
+					break;
+
+				case SDL_QUIT:
 					bRunning = false;
+					break;
+
+				default:
+					break;
 				}
 			}
 
@@ -642,7 +675,6 @@ int main(int argc, char const* argv[])
 				}
 
 				// Left
-				static int selected = 0;
 				{
 					ImGui::BeginChild("left pane", ImVec2(200, 0), true);
 
@@ -687,8 +719,8 @@ int main(int argc, char const* argv[])
 								const auto& filenameCstr = file.name.c_str();
 								//if (fts::fuzzy_match_simple(filterStr, filenameCstr))
 								//{
-								if (ImGui::Selectable(filenameCstr, selected == i))
-									selected = i;
+								if (ImGui::Selectable(filenameCstr, selectedAssetIndex == i))
+									selectedAssetIndex = i;
 								//}
 							}
 							ImGui::EndTabItem();
@@ -715,8 +747,8 @@ int main(int argc, char const* argv[])
 								const auto& filenameCstr = file.name.c_str();
 								/*if (fts::fuzzy_match_simple(filterStr, filenameCstr))
 								{*/
-								if (ImGui::Selectable(filenameCstr, selected == i))
-									selected = i;
+								if (ImGui::Selectable(filenameCstr, selectedAssetIndex == i))
+									selectedAssetIndex = i;
 								//}
 							}
 							ImGui::EndTabItem();
@@ -738,9 +770,9 @@ int main(int argc, char const* argv[])
 					if (activeMode == PreviewMode::Texture)
 					{
 						if (!filteredFiles.empty() &&
-							selected >= 0 && selected < filteredFiles.size())
+							selectedAssetIndex >= 0 && selectedAssetIndex < filteredFiles.size())
 						{
-							const auto& file = filteredFiles[selected];
+							const auto& file = filteredFiles[selectedAssetIndex];
 							ImGui::Text("Name: %s", file.name.c_str());
 							ImGui::Text("Format: %s", file.ext.c_str());
 							ImGui::Text("Size: %d kb", file.size);
@@ -804,9 +836,9 @@ int main(int argc, char const* argv[])
 					else if (activeMode == PreviewMode::Audio)
 					{
 						if (!filteredFiles.empty() &&
-							selected >= 0 && selected < filteredFiles.size())
+							selectedAssetIndex >= 0 && selectedAssetIndex < filteredFiles.size())
 						{
-							const auto& file = filteredFiles[selected];
+							const auto& file = filteredFiles[selectedAssetIndex];
 							ImGui::Text("Name: %s", file.name.c_str());
 							ImGui::Text("Format: %s", file.ext.c_str());
 							ImGui::Text("Size: %d kb", file.size);
