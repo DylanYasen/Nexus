@@ -465,6 +465,11 @@ static PreviewMode activeMode = PreviewMode::Texture;
 static int selectedAssetIndex = -1;
 
 
+void OnAssetBrowserTabSwitch()
+{
+	selectedAssetIndex = -1;
+}
+
 int main(int argc, char const* argv[])
 {
 	SDL_Window* window = NULL;
@@ -476,6 +481,7 @@ int main(int argc, char const* argv[])
 	static char filterStr[256] = "";
 	static char filterStrCopy[256] = "";
 	static char* filterStrTokens[32];
+	static int filterStrTokenCount = 0;
 
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 	{
@@ -696,7 +702,7 @@ int main(int argc, char const* argv[])
 
 					bool bFilterStrDirty = ImGui::InputText(ICON_FA_SEARCH, filterStr, IM_ARRAYSIZE(filterStr));
 
-					int tokenCount = 0;
+			
 
 					// split tokens
 					if (bFilterStrDirty)
@@ -705,11 +711,10 @@ int main(int argc, char const* argv[])
 						strcpy(filterStrCopy, filterStr);
 
 						char* token = strtok(filterStrCopy, " ");
-						int i = 0;
+						filterStrTokenCount = 0;
 						while (token != NULL)
 						{
-							tokenCount++;
-							filterStrTokens[i++] = token;
+							filterStrTokens[filterStrTokenCount++] = token;
 							token = strtok(NULL, " ");
 						}
 					}
@@ -718,9 +723,15 @@ int main(int argc, char const* argv[])
 					{
 						if (ImGui::BeginTabItem("Texture"))
 						{
+							if (activeMode != PreviewMode::Texture)
+							{
+								activeMode = PreviewMode::Texture;
+								OnAssetBrowserTabSwitch();
+							}
+
 							if (bFilterStrDirty || !bFilteredForTexture)
 							{
-								filteredFiles = db::GetTextureFilesByNameFilters(filterStrTokens, tokenCount);
+								filteredFiles = db::GetTextureFilesByNameFilters(filterStrTokens, filterStrTokenCount);
 
 								// todo: cleanier way to manage these states?
 								{
@@ -741,14 +752,19 @@ int main(int argc, char const* argv[])
 							}
 							ImGui::EndTabItem();
 
-							activeMode = PreviewMode::Texture;
 						}
 
 						if (ImGui::BeginTabItem("Audio"))
 						{
+							if (activeMode != PreviewMode::Audio)
+							{
+								activeMode = PreviewMode::Audio;
+								OnAssetBrowserTabSwitch();
+							}
+
 							if (bFilterStrDirty || !bFilteredForAudio)
 							{
-								filteredFiles = db::GetAudioFilesByNameFilters(filterStrTokens, tokenCount);
+								filteredFiles = db::GetAudioFilesByNameFilters(filterStrTokens, filterStrTokenCount);
 
 								// todo: cleanier way to manage these states?
 								{
@@ -769,7 +785,7 @@ int main(int argc, char const* argv[])
 							}
 							ImGui::EndTabItem();
 
-							activeMode = PreviewMode::Audio;
+						
 						}
 					}
 					ImGui::EndTabBar();
