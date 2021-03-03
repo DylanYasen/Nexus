@@ -617,8 +617,9 @@ int main(int argc, char const* argv[])
 					break;
 
 				case SDL_KEYUP:
-
-					if (sdlEvent.key.keysym.sym == SDLK_SPACE)
+				{
+					const auto& keycode = sdlEvent.key.keysym.sym;
+					if (keycode == SDLK_SPACE)
 					{
 						if (activeMode == PreviewMode::Audio)
 						{
@@ -636,7 +637,22 @@ int main(int argc, char const* argv[])
 							}
 						}
 					}
+					else if (keycode == SDLK_UP || keycode == SDLK_DOWN)
+					{
+						if (!filteredFiles.empty() &&
+							selectedAssetIndex != -1) // only navigate when focusing on asset list
+						{
+							int listsize = filteredFiles.size();
+
+							int dir = (keycode == SDLK_UP ? -1 : 1);
+							selectedAssetIndex += dir;
+							
+							if (selectedAssetIndex < 0) selectedAssetIndex = listsize - 1;
+							else if (selectedAssetIndex >= listsize) selectedAssetIndex = 0;
+						}
+					}
 					break;
+				}
 
 				case SDL_QUIT:
 					bRunning = false;
