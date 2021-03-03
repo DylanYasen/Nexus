@@ -81,6 +81,10 @@ namespace db {
 		int tag_id;
 	};
 
+	struct SearchPattern {
+		std::string value;
+	};
+
 	using namespace sqlite_orm;
 	auto storage = make_storage("./db.sqlite",
 
@@ -105,7 +109,10 @@ namespace db {
 			make_column("file_id", &FileTag::file_id),
 			make_column("tag_id", &FileTag::tag_id),
 			foreign_key(&FileTag::file_id).references(&File::id),
-			foreign_key(&FileTag::tag_id).references(&Tag::id))
+			foreign_key(&FileTag::tag_id).references(&Tag::id)),
+
+		make_table("searchPattern",
+			make_column("searchPattern", &SearchPattern::value))
 	);
 
 	void Init()
@@ -122,7 +129,7 @@ namespace db {
 			storage.insert(file);
 		}
 		else {
-			printf("already exist [%s]\n", file.path);
+			printf("already exist [%s]\n", file.path.c_str());
 		}
 	}
 
@@ -159,19 +166,70 @@ namespace db {
 			});
 	}
 
-	std::vector<File> GetFilesByRoughName(std::string name)
+	//std::vector<File> GetFilesByRoughName(const std::string& name)
+	//{
+	//	return storage.get_all<File>(where(like(&File::name, "%" + name + "%")));
+	//}
+
+	//std::vector<File> GetAudioFilesByRoughName(const std::string& name)
+	//{
+	//	return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, AUDIO_FILE_TYPE)));
+	//}
+
+	//std::vector<File> GetTextureFilesByRoughName(const std::string& name)
+	//{
+	//	return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, TEXTURE_FILE_TYPE)));
+	//}
+
+
+
+	std::vector<File> GetFilesByNameFilters(const std::string& fileType, char** tokens, int tokenCount, bool bMatchAll = true)
 	{
-		return storage.get_all<File>(where(like(&File::name, "%" + name + "%")));
+		std::vector<File> files;
+
+		if (tokenCount < 0)
+		{
+			printf("[error]: no token passed to GetTextureFilesByRoughNames()");
+			return files;
+		}
+
+		storage.begin_transaction();
+
+		for (int i = 0; i < tokenCount; i++)
+		{
+			const char* token = tokens[i];
+			storage.insert<SearchPattern>({ token });
+		}
+
+		if (bMatchAll)
+		{
+			files = storage.get_all<File>(
+				where(in(&File::id, select(&File::id,
+					where(is_equal(&File::type, fileType) and like(&File::name, conc(conc("%", &SearchPattern::value), "%"))),
+					group_by(&File::id),
+					having(is_equal(count(&SearchPattern::value),
+						select(count<SearchPattern>())))))));
+		}
+		else
+		{
+			files = storage.get_all<File>(
+				where(in(&File::id, select(&File::id,
+					where(is_equal(&File::type, fileType) and like(&File::name, conc(conc("%", &SearchPattern::value), "%")))))));
+		}
+
+		storage.rollback();
+
+		return files;
 	}
 
-	std::vector<File> GetAudioFilesByRoughName(std::string name)
+	std::vector<File> GetAudioFilesByNameFilters(char** tokens, int tokenCount, bool bMatchAll = true)
 	{
-		return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, AUDIO_FILE_TYPE)));
+		return GetFilesByNameFilters(AUDIO_FILE_TYPE, tokens, tokenCount, bMatchAll);
 	}
 
-	std::vector<File> GetTextureFilesByRoughName(std::string name)
+	std::vector<File> GetTextureFilesByNameFilters(char** tokens, int tokenCount, bool bMatchAll = true)
 	{
-		return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, TEXTURE_FILE_TYPE)));
+		return GetFilesByNameFilters(TEXTURE_FILE_TYPE, tokens, tokenCount, bMatchAll);
 	}
 }
 
@@ -412,6 +470,8 @@ int main(int argc, char const* argv[])
 	std::unordered_map<std::string, AudioPreview*> audioPreviewMap;
 
 	static char filterStr[256] = "";
+	static char filterStrCopy[256] = "";
+	static char* filterStrTokens[32];
 
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
 	{
@@ -588,13 +648,31 @@ int main(int argc, char const* argv[])
 
 					bool bFilterStrDirty = ImGui::InputText(ICON_FA_SEARCH, filterStr, IM_ARRAYSIZE(filterStr));
 
+					int tokenCount = 0;
+
+					// split tokens
+					if (bFilterStrDirty)
+					{
+						// copy to avoid mutating og filter str for UI
+						strcpy(filterStrCopy, filterStr);
+
+						char* token = strtok(filterStrCopy, " ");
+						int i = 0;
+						while (token != NULL)
+						{
+							tokenCount++;
+							filterStrTokens[i++] = token;
+							token = strtok(NULL, " ");
+						}
+					}
+
 					if (ImGui::BeginTabBar("##Tabs", ImGuiTabBarFlags_None))
 					{
 						if (ImGui::BeginTabItem("Texture"))
 						{
 							if (bFilterStrDirty || !bFilteredForTexture)
 							{
-								filteredFiles = db::GetTextureFilesByRoughName(filterStr);
+								filteredFiles = db::GetTextureFilesByNameFilters(filterStrTokens, tokenCount);
 
 								// todo: cleanier way to manage these states?
 								{
@@ -607,11 +685,11 @@ int main(int argc, char const* argv[])
 							{
 								const auto& file = filteredFiles[i];
 								const auto& filenameCstr = file.name.c_str();
-								if (fts::fuzzy_match_simple(filterStr, filenameCstr))
-								{
-									if (ImGui::Selectable(filenameCstr, selected == i))
-										selected = i;
-								}
+								//if (fts::fuzzy_match_simple(filterStr, filenameCstr))
+								//{
+								if (ImGui::Selectable(filenameCstr, selected == i))
+									selected = i;
+								//}
 							}
 							ImGui::EndTabItem();
 
@@ -622,7 +700,7 @@ int main(int argc, char const* argv[])
 						{
 							if (bFilterStrDirty || !bFilteredForAudio)
 							{
-								filteredFiles = db::GetAudioFilesByRoughName(filterStr);
+								filteredFiles = db::GetAudioFilesByNameFilters(filterStrTokens, tokenCount);
 
 								// todo: cleanier way to manage these states?
 								{
@@ -635,11 +713,11 @@ int main(int argc, char const* argv[])
 							{
 								const auto& file = filteredFiles[i];
 								const auto& filenameCstr = file.name.c_str();
-								if (fts::fuzzy_match_simple(filterStr, filenameCstr))
-								{
-									if (ImGui::Selectable(filenameCstr, selected == i))
-										selected = i;
-								}
+								/*if (fts::fuzzy_match_simple(filterStr, filenameCstr))
+								{*/
+								if (ImGui::Selectable(filenameCstr, selected == i))
+									selected = i;
+								//}
 							}
 							ImGui::EndTabItem();
 
