@@ -54,6 +54,7 @@ namespace db {
 		std::string path;
 		std::string ext;
 		std::string type;  // using strings for now,  enum binding is too much work
+		std::string directory;
 		size_t size;
 
 		File()
@@ -64,7 +65,11 @@ namespace db {
 			:name(rawFile.name), path(rawFile.path),
 			ext(rawFile.ext), size(rawFile.size)
 		{
-
+			const size_t last_slash_idx = path.rfind('/');
+			if (std::string::npos != last_slash_idx)
+			{
+				directory = path.substr(0, last_slash_idx);
+			}
 		}
 	};
 
@@ -98,7 +103,8 @@ namespace db {
 			make_column("path", &File::path, unique()),
 			make_column("ext", &File::ext),
 			make_column("size", &File::size),
-			make_column("type", &File::type)),
+			make_column("type", &File::type),
+			make_column("dir", &File::directory)),
 
 		make_table("tags",
 			make_column("id", &Tag::id, autoincrement(), primary_key()),
@@ -180,8 +186,6 @@ namespace db {
 	//{
 	//	return storage.get_all<File>(where(like(&File::name, "%" + name + "%") and is_equal(&File::type, TEXTURE_FILE_TYPE)));
 	//}
-
-
 
 	std::vector<File> GetFilesByNameFilters(const std::string& fileType, char** tokens, int tokenCount, bool bMatchAll = true)
 	{
@@ -563,12 +567,11 @@ int main(int argc, char const* argv[])
 		bool bActive = true;
 
 		const char* assetPaths[] = {
-			//"E:/Audio"
-			"E:/Assets/actionrpgloot"
-			/*"E:/Assets/actionrpgloot",
-			"E:/Audio/RPG Sound Pack",
-			"E:/Assets/armoriconpack"*/
+			//"E:/Audio",
 			//"E:/Assets"
+
+			"E:/Assets/actionrpgloot",
+			"E:/Assets/armoriconpack"
 		};
 
 		// init database
@@ -652,7 +655,7 @@ int main(int argc, char const* argv[])
 
 							int dir = (keycode == SDLK_UP ? -1 : 1);
 							selectedAssetIndex += dir;
-							
+
 							if (selectedAssetIndex < 0) selectedAssetIndex = listsize - 1;
 							else if (selectedAssetIndex >= listsize) selectedAssetIndex = 0;
 						}
@@ -702,7 +705,7 @@ int main(int argc, char const* argv[])
 
 					bool bFilterStrDirty = ImGui::InputText(ICON_FA_SEARCH, filterStr, IM_ARRAYSIZE(filterStr));
 
-			
+
 
 					// split tokens
 					if (bFilterStrDirty)
@@ -785,7 +788,7 @@ int main(int argc, char const* argv[])
 							}
 							ImGui::EndTabItem();
 
-						
+
 						}
 					}
 					ImGui::EndTabBar();
@@ -805,9 +808,24 @@ int main(int argc, char const* argv[])
 							selectedAssetIndex >= 0 && selectedAssetIndex < filteredFiles.size())
 						{
 							const auto& file = filteredFiles[selectedAssetIndex];
-							ImGui::Text("Name: %s", file.name.c_str());
-							ImGui::Text("Format: %s", file.ext.c_str());
-							ImGui::Text("Size: %d kb", file.size);
+
+							// header
+							{
+								ImGui::Text("Name: %s", file.name.c_str());
+								ImGui::Text("Format: %s", file.ext.c_str());
+								ImGui::Text("Size: %d kb", file.size);
+								ImGui::Text("Path: %s", file.path.c_str());
+
+								if (ImGui::Button("Open File"))
+								{
+									SDL_OpenURL(file.path.c_str());
+								}
+
+								if (ImGui::Button("Open Directory"))
+								{
+									SDL_OpenURL(file.directory.c_str());
+								}
+							}
 
 							// todo: maybe hash the path
 							if (texturePreviewMap.find(file.path) == texturePreviewMap.end())
@@ -871,9 +889,23 @@ int main(int argc, char const* argv[])
 							selectedAssetIndex >= 0 && selectedAssetIndex < filteredFiles.size())
 						{
 							const auto& file = filteredFiles[selectedAssetIndex];
-							ImGui::Text("Name: %s", file.name.c_str());
-							ImGui::Text("Format: %s", file.ext.c_str());
-							ImGui::Text("Size: %d kb", file.size);
+							// header
+							{
+								ImGui::Text("Name: %s", file.name.c_str());
+								ImGui::Text("Format: %s", file.ext.c_str());
+								ImGui::Text("Size: %d kb", file.size);
+								ImGui::Text("Path: %s", file.path.c_str());
+
+								if (ImGui::Button("Open File"))
+								{
+									SDL_OpenURL(file.path.c_str());
+								}
+
+								if (ImGui::Button("Open Directory"))
+								{
+									SDL_OpenURL(file.directory.c_str());
+								}
+							}
 
 							if (audioPreviewMap.find(file.path) == audioPreviewMap.end())
 							{

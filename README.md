@@ -35,6 +35,7 @@ SELECT * FROM files WHERE name like "%loot%"
 
 
 todo:
+[] open file in explorer 
 [] query by tags
 [] file scan paths UI
 [] file scanning in background thread
